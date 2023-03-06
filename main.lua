@@ -5,6 +5,13 @@ require 'Bird'
 require 'Pipe'
 require 'PipePair'
 
+require 'StateMachine'
+require 'states/BaseState'
+require 'states/PlayState'
+require 'states/TitleScreenState'
+require 'states/ScoreState'
+require 'states/CountdownState'
+
 WINDOW_WIDTH = 1280
 WINDOW_HEIGHT = 720
 
@@ -21,19 +28,34 @@ local BACKGROUND_SCROLL_SPEED = 30
 local GROUND_SCROLL_SPEED = 60
 
 local BACKGROUND_LOOPING_POINT = 413
+local GROUND_LOOPING_POINT = 514
 
-local bird = Bird()
-
-local pipePairs = {}
-
-local pipeTimer = 0
-
-local lastY = -PIPE_HEIGHT + math.random(80) + 20
+local scrolling = true
 
 function love.load()
 	love.graphics.setDefaultFilter('nearest', 'nearest')
 
 	love.window.setTitle('Legally Distinct Flappy Bird')
+
+	--instantiate new fonts
+	smallFont = love.graphics.newFont('fonts/font.ttf', 8)
+	mediumFont = love.graphics.newFont('fonts/flappy.ttf', 14)
+	flappyFont = love.graphics.newFont('fonts/flappy.ttf', 28)
+	scoreFont = love.graphics.newFont('fonts/flappy.ttf', 56)
+	love.graphics.setFont(flappyFont)
+
+	--initialize the sounds table
+	sounds = {
+		['jump'] = love.audio.newSource('sounds/jump.wav', 'static'),
+		['explosion'] = love.audio.newSource('sounds/explosion.wav', 'static'),
+		['hurt'] = love.audio.newSource('sounds/hurt.wav', 'static'),
+		['score'] = love.audio.newSource('sounds/score.wav', 'static'),
+
+		['music'] = love.audio.newSource('sounds/marios_way.mp3', 'static')
+	}
+
+	sounds['music']:setLooping(true)
+	sounds['music']:play()
 
 	math.randomseed(os.time())
 
@@ -43,11 +65,26 @@ function love.load()
 		resizable = true
 	})
 
+	--instantiate state machine table here
+	gStateMachine = StateMachine {
+		['title'] = function() return TitleScreenState() end,
+		['play'] = function() return PlayState() end,
+		['score'] = function() return ScoreState() end,
+		['countdown'] = function() return CountdownState() end,
+	}
+
+	gStateMachine:change('title')
+
+	love.mouse.buttonsPressed = {}
 	love.keyboard.keysPressed = {}
 end
 
 function love.resize(w, h)
 	push:resize(w, h)
+end
+
+function love.mousepressed(x, y, button)
+	love.mouse.buttonsPressed[button] = true
 end
 
 function love.keypressed(key)
@@ -66,37 +103,27 @@ function love.keyboard.wasPressed(key)
 	end
 end
 
-function love.update(dt)
-	pipeTimer = pipeTimer + dt
-
-	if pipeTimer > 2 then
-
-		local y = math.max(-PIPE_HEIGHT + 10,
-			math.min(lastY + math.random(-20, 20), VIRTUAL_HEIGHT - 90 - PIPE_HEIGHT))
-		lastY = y 
-
-		table.insert(pipePairs, PipePair(y))
-		pipeTimer = 0
+function love.mouse.wasPressed(button)
+	if love.mouse.buttonsPressed[button] then
+		return true
+	else
+		return false
 	end
+end
+
+function love.update(dt)
+
+	--dt = math.min(dt, 1/60)
 
 	backgroundscroll = (backgroundscroll + BACKGROUND_SCROLL_SPEED * dt)
 		% BACKGROUND_LOOPING_POINT
 
 	groundscroll = (groundscroll + GROUND_SCROLL_SPEED * dt)
-		% VIRTUAL_WIDTH
+		% GROUND_LOOPING_POINT
 
-	bird:update(dt)
+	gStateMachine:update(dt)
 
-	for k, pair in pairs(pipePairs) do
-		pair:update(dt)
-	end
-
-	for k, pair in pairs(pipePairs) do
-		if pair.remove then
-			table.remove(pipePairs, k)
-		end
-	end
-
+	love.mouse.buttonsPressed = {}
 	love.keyboard.keysPressed = {}
 end
 
@@ -105,13 +132,9 @@ function love.draw()
 
 	love.graphics.draw(background, -backgroundscroll, 0)
 	
-	for k, pair in pairs(pipePairs) do
-		pair:render()
-	end
+	gStateMachine:render()
 
 	love.graphics.draw(ground, -groundscroll, VIRTUAL_HEIGHT - 16)
-
-	bird:render()
 
 	push:finish()
 end

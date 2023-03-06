@@ -12,6 +12,11 @@ function PipePair:init(y)
 	}
 
 	self.remove = false
+
+	--if 'true', the player has already set a score
+	--Because of the way scoring works (scoring a point if the bird's X coordinate is greater than the pipe's X coordinate),
+	--this is necessary to make sure the player scores only once instead of every frame
+	self.scored = false
 end
 
 function PipePair:update(dt)
